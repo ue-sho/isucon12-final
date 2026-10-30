@@ -1,5 +1,4 @@
 import { Request, Response } from 'express'
-import mysql, { OkPacket } from 'mysql2/promise'
 import { v4 as uuidv4 } from 'uuid'
 
 // successResponse responds success.
@@ -38,28 +37,4 @@ export function generateUUID() {
   return uuidv4()
 }
 
-export const useGenerateId = (db: mysql.Pool) => {
-  // generateID uniqueなIDを生成する
-  const generateId = async (): Promise<number> => {
-    let id = 0
-    let updateErr: any
-    for (const _ of Array(100)) {
-      try {
-        const [result] = await db.query<OkPacket>('UPDATE id_generator SET id=LAST_INSERT_ID(id+1)')
-
-        id = result.insertId
-        return id
-      } catch (error: any) {
-        if (error.errno && error.errno === 1213) {
-          updateErr = error
-        }
-      }
-    }
-
-    throw new Error(`failed to generate id: ${updateErr.toString()}`)
-  }
-
-  return {
-    generateId,
-  }
-}
+export { useGenerateId } from './id-generator'

@@ -81,7 +81,7 @@ const db = mysql.createPool({
   connectionLimit: 50,
 })
 
-const { generateId } = useGenerateId(db)
+const { generateId, resetGenerateId } = useGenerateId(db)
 
 const corsOption = {
   origin: '*',
@@ -727,6 +727,7 @@ app.post(
   wrap(async (req: Request, res: Response, _next: NextFunction) => {
     try {
       await exec(['/bin/sh', '-c', SQLDirectory + 'init.sh'].join(' '))
+      await resetGenerateId()
       triggerPproteinCollect()
 
       const data: InitializeResponse = {
