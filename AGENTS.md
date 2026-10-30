@@ -12,6 +12,20 @@ ISUCON15で、仕様を満たしながらWebアプリケーションのチュー
 - アプリの配置・起動方法：未記入
 - DB・サーバー構成：未記入
 
+## サーバーの役割
+
+| ホスト | 役割・待受 |
+|---|---|
+| s2 (`172.31.8.132`) | nginx (`80`) とベンチマーカー |
+| s1 (`172.31.6.225`) | Node.jsアプリ (`8080`) とプロファイラー (`6060`) |
+| s3 (`172.31.3.5`) | MySQL (`3306`) とpprotein本体 (`9000`) |
+
+nginxはs1の8080へ転送し、Node.jsはs3のMySQLへ接続します。各ホストの担当外のnginx・アプリ・MySQLは無効化します。
+pprotein-agent (`19000`) は各ホストで動作します。`HTTPLOG_HOST=s2`、`SLOWLOG_HOST=s3`、`PPROF_HOST=s1` により収集元を指定します。
+この設定がある場合、`single` / `split` とも指定された役割のホストだけを収集します。
+DB初期化はアプリ側のTSVを `LOAD DATA LOCAL INFILE` でs3へ転送するため、s3で `local_infile=1` が必要です。
+ベンチはs2で `ISUXBENCH_TARGET=127.0.0.1 ./bin/benchmarker --stage=prod --target-host=127.0.0.1:80 --request-timeout=10s --initialize-request-timeout=60s` を実行します。
+
 ## コマンド
 
 | コマンド | 用途 |

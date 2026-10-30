@@ -15,6 +15,10 @@ def render_all(config):
     pprotein = config.require('PPROTEIN_HOST')
     if not ips.get(pprotein) or not all(ips.values()):
         raise ToolError('プライベート IP が isutools/hosts.env にありません（task bootstrap で生成されます）')
+    role_hosts = {kind: config.get(key) for kind, key in
+                  [('httplog', 'HTTPLOG_HOST'), ('slowlog', 'SLOWLOG_HOST'), ('pprof', 'PPROF_HOST')]}
+    if any(host and host not in hosts for host in role_hosts.values()):
+        raise ToolError('pprotein の収集元ホストは HOSTS に含めてください')
 
     def template(name, path, **values):
         content = (config.tools / 'templates' / name).read_text()
@@ -48,10 +52,11 @@ def render_all(config):
     for mode, targets in [('single', hosts[:1]), ('split', hosts)]:
         data = [{'Type': kind, 'Label': f'{host}-{kind}',
                  'URL': f'http://{ips[host]}:{port}{path}', 'Duration': duration}
-                for host in targets for kind, port, path, duration in
+                for kind, port, path, duration in
                 [('httplog', 19000, '/debug/log/httplog', 70),
                  ('slowlog', 19000, '/debug/log/slowlog', 70),
-                 ('pprof', 6060, '/debug/pprof/profile', 60)]]
+                 ('pprof', 6060, '/debug/pprof/profile', 60)]
+                for host in ([role_hosts[kind]] if role_hosts[kind] else targets)]
         write(config.tools / f'pprotein/targets.{mode}.json', json.dumps(data, indent=2) + '\n')
 
 

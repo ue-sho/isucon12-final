@@ -67,7 +67,8 @@ class RenderTests(unittest.TestCase):
         import shutil
         shutil.copytree(ROOT / 'isutools/templates', self.root / 'isutools/templates')
         values = read_env(ROOT / 'isutools/config.env')
-        values.update(APP_SERVICE='isuapp-node.service', S1_IP='10.0.0.1', S2_IP='10.0.0.2', S3_IP='10.0.0.3')
+        values.update(APP_SERVICE='isuapp-node.service', S1_IP='10.0.0.1', S2_IP='10.0.0.2', S3_IP='10.0.0.3',
+                      HTTPLOG_HOST='', SLOWLOG_HOST='', PPROF_HOST='')
         self.config = Config(self.root, values)
 
     def text(self, path):
@@ -116,6 +117,23 @@ class RenderTests(unittest.TestCase):
     def test_missing_private_ip_fails_before_writing(self):
         del self.config.values['S3_IP']
         with self.assertRaisesRegex(ToolError, 'hosts.env'):
+            render_all(self.config)
+        self.assertFalse((self.root / 's1').exists())
+
+    def test_targets_follow_separated_service_roles(self):
+        self.config.values.update(HTTPLOG_HOST='s2', SLOWLOG_HOST='s3', PPROF_HOST='s1')
+        render_all(self.config)
+        for mode in ['single', 'split']:
+            targets = json.loads(self.text(f'isutools/pprotein/targets.{mode}.json'))
+            self.assertEqual([t['Label'] for t in targets], ['s2-httplog', 's3-slowlog', 's1-pprof'])
+            self.assertEqual([t['URL'] for t in targets], [
+                'http://10.0.0.2:19000/debug/log/httplog',
+                'http://10.0.0.3:19000/debug/log/slowlog',
+                'http://10.0.0.1:6060/debug/pprof/profile'])
+
+    def test_unknown_collection_host_fails_before_writing(self):
+        self.config.values['HTTPLOG_HOST'] = 'unknown'
+        with self.assertRaisesRegex(ToolError, 'HOSTS'):
             render_all(self.config)
         self.assertFalse((self.root / 's1').exists())
 

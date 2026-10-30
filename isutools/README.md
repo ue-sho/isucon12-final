@@ -80,6 +80,7 @@ PORTAL_CSRF_TOKEN="<CSRFトークン>"
 | `DB_SERVICE` | `mysql` または `mariadb` |
 | `NGINX_LOG` / `SLOW_LOG` | 計測ログのパス |
 | `PPROTEIN_HOST` | pprotein本体を置くホスト。初期値は `s3` |
+| `HTTPLOG_HOST` / `SLOWLOG_HOST` / `PPROF_HOST` | 役割分離時の収集元。指定した種類はsingle/splitともそのホストだけを収集。空ならsingleは先頭、splitは全ホスト |
 | `ENV_FILES` | ISUCON提供のenvファイル。空ならアプリunitの `EnvironmentFile=` から検出 |
 
 ベンチAPIの設定と認証の当日確認は[ベンチ実行手順](../docs/benchmark.md)を参照してください。
