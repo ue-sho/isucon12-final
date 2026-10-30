@@ -5,6 +5,7 @@ import mysql, { RowDataPacket } from 'mysql2/promise'
 import childProcess from 'child_process'
 import util from 'util'
 import { triggerPproteinCollect } from './pprotein'
+import { groupPresentRewards } from './present-rewards'
 
 const exec = util.promisify(childProcess.exec)
 
@@ -506,71 +507,43 @@ async function obtainLoginBonus(conn: mysql.Connection, userId: number, requestA
 }
 
 // obtainPresent プレゼント付与処理
+async function insertPresents(conn: mysql.Connection, presents: UserPresent[]): Promise<void> {
+  if (!presents.length) return
+  await conn.query(
+    'INSERT INTO user_presents(id, user_id, sent_at, item_type, item_id, amount, present_message, created_at, updated_at) VALUES ?',
+    [presents.map(p => [p.id, p.userId, p.sentAt, p.itemType, p.itemId, p.amount, p.presentMessage, p.createdAt, p.updatedAt])]
+  )
+}
+
 async function obtainPresent(conn: mysql.Connection, userId: number, requestAt: number): Promise<UserPresent[]> {
-  let query = 'SELECT * FROM present_all_masters WHERE registered_start_at <= ? AND registered_end_at >= ?'
-  const [normalPresents] = await conn.query<(PresentAllMasterRow & RowDataPacket)[]>(query, [requestAt, requestAt])
-
-  // 全員プレゼント取得情報更新
+  const [normalPresents] = await conn.query<(PresentAllMasterRow & RowDataPacket)[]>(
+    'SELECT * FROM present_all_masters WHERE registered_start_at <= ? AND registered_end_at >= ?',
+    [requestAt, requestAt]
+  )
+  if (!normalPresents.length) return []
+  const [history] = await conn.query<(UserPresentAllReceivedHistoryRow & RowDataPacket)[]>(
+    'SELECT present_all_id FROM user_present_all_received_history WHERE user_id=?', [userId]
+  )
+  const received = new Set(history.map(row => row.present_all_id))
   const obtainPresents: UserPresent[] = []
+  const historyRows: number[][] = []
   for (const np of normalPresents) {
-    query = 'SELECT * FROM user_present_all_received_history WHERE user_id=? AND present_all_id=?'
-    const [[received]] = await conn.query<(UserPresentAllReceivedHistoryRow & RowDataPacket)[]>(query, [userId, np.id])
-    if (received) {
-      // プレゼント配布済
-      continue
-    }
-
-    // user present boxに入れる
+    if (received.has(np.id)) continue
     const pId = await generateId()
-    const up: UserPresent = {
-      id: pId,
-      userId,
-      sentAt: requestAt,
-      itemType: np.item_type,
-      itemId: np.item_id,
-      amount: np.amount,
-      presentMessage: np.present_message,
-      createdAt: requestAt,
-      updatedAt: requestAt,
-    }
-    query =
-      'INSERT INTO user_presents(id, user_id, sent_at, item_type, item_id, amount, present_message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    await conn.query(query, [
-      up.id,
-      up.userId,
-      up.sentAt,
-      up.itemType,
-      up.itemId,
-      up.amount,
-      up.presentMessage,
-      up.createdAt,
-      up.updatedAt,
-    ])
-
-    // historyに入れる
-    const phId = await generateId()
-    const history: UserPresentAllReceivedHistoryRow = {
-      id: phId,
-      user_id: userId,
-      present_all_id: np.id,
-      received_at: requestAt,
-      created_at: requestAt,
-      updated_at: requestAt,
-    }
-    query =
-      'INSERT INTO user_present_all_received_history(id, user_id, present_all_id, received_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-    await conn.query(query, [
-      history.id,
-      history.user_id,
-      history.present_all_id,
-      history.received_at,
-      history.created_at,
-      history.updated_at,
-    ])
-
-    obtainPresents.push(up)
+    obtainPresents.push({
+      id: pId, userId, sentAt: requestAt, itemType: np.item_type,
+      itemId: np.item_id, amount: np.amount, presentMessage: np.present_message,
+      createdAt: requestAt, updatedAt: requestAt,
+    })
+    historyRows.push([await generateId(), userId, np.id, requestAt, requestAt, requestAt])
   }
-
+  await insertPresents(conn, obtainPresents)
+  if (historyRows.length) {
+    await conn.query(
+      'INSERT INTO user_present_all_received_history(id, user_id, present_all_id, received_at, created_at, updated_at) VALUES ?',
+      [historyRows]
+    )
+  }
   return obtainPresents
 }
 
@@ -1217,22 +1190,10 @@ app.post(
             updatedAt: requestAt,
           }
 
-          query =
-            'INSERT INTO user_presents(id, user_id, sent_at, item_type, item_id, amount, present_message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-          await conn.query(query, [
-            present.id,
-            present.userId,
-            present.sentAt,
-            present.itemType,
-            present.itemId,
-            present.amount,
-            present.presentMessage,
-            present.createdAt,
-            present.updatedAt,
-          ])
-
           presents.push(present)
         }
+
+        await insertPresents(conn, presents)
 
         // isucoinをへらす
         query = 'UPDATE users SET isu_coin=? WHERE id=?'
@@ -1329,37 +1290,26 @@ app.post(
         return errorResponse(res, 404, new Error(ErrUserDeviceNotFound))
       }
 
-      // user_presentsに入っているが未取得のプレゼント取得
-      const questions = Array(presentIds.length).fill('?')
-      let query = 'SELECT * FROM user_presents WHERE id IN (' + questions.join(',') + ') AND deleted_at IS NULL'
-      const [obtainPresent] = await db.query<(UserPresentRow & RowDataPacket)[]>(query, presentIds)
-
-      if (!obtainPresent.length) {
-        const payload: ReceivePresentResponse = {
-          updatedResources: {
-            now: requestAt,
-            userPresents: [],
-          },
-        }
-        return successResponse(res, payload)
-      }
-
       const conn = await db.getConnection()
-      await conn.beginTransaction()
       try {
-        // 配布処理
+        await conn.beginTransaction()
+        // Lock the owner before selecting gifts to serialize concurrent receives for this user.
+        await conn.query('SELECT id FROM users WHERE id=? FOR UPDATE', [userId])
+        const [obtainPresent] = await conn.query<(UserPresentRow & RowDataPacket)[]>(
+          'SELECT * FROM user_presents WHERE user_id=? AND id IN (?) AND deleted_at IS NULL FOR UPDATE',
+          [userId, presentIds]
+        )
+        if (!obtainPresent.length) {
+          await conn.commit()
+          return successResponse(res, { updatedResources: { now: requestAt, userPresents: [] } })
+        }
+        await conn.query('UPDATE user_presents SET deleted_at=?, updated_at=? WHERE id IN (?)',
+          [requestAt, requestAt, obtainPresent.map(p => p.id)])
         for (const present of obtainPresent) {
-          if (present.deleted_at) {
-            await conn.rollback()
-            return errorResponse(res, 500, new Error('received present'))
-          }
-
           present.updated_at = requestAt
           present.deleted_at = requestAt
-
-          query = 'UPDATE user_presents SET deleted_at=?, updated_at=? WHERE id=?'
-          await conn.query(query, [requestAt, requestAt, present.id])
-
+        }
+        for (const present of groupPresentRewards(obtainPresent)) {
           try {
             await obtainItem(conn, present.user_id, present.item_id, present.item_type, present.amount, requestAt)
           } catch (error: any) {
