@@ -27,11 +27,11 @@ echo "delete from user_presents where id > 100000000000" | mysql -u"$ISUCON_DB_U
 		"$ISUCON_DB_NAME"
 
 # Read the TSV on the app server; MySQL may be on another host.
-echo "LOAD DATA LOCAL INFILE '5_user_presents_not_receive_data.tsv' REPLACE INTO TABLE user_presents FIELDS ESCAPED BY '|' IGNORE 1 LINES ;" | mysql --local-infile=1 -u"$ISUCON_DB_USER" \
+mysql --local-infile=1 -u"$ISUCON_DB_USER" \
         -p"$ISUCON_DB_PASSWORD" \
         --host "$ISUCON_DB_HOST" \
         --port "$ISUCON_DB_PORT" \
-        "$ISUCON_DB_NAME"
+        "$ISUCON_DB_NAME" < 5_restore_user_presents.sql
 
 mysql -u"$ISUCON_DB_USER" \
         -p"$ISUCON_DB_PASSWORD" \
