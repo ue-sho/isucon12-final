@@ -219,7 +219,9 @@ CREATE TABLE `user_sessions` (
   `expired_at` bigint NOT NULL,
   `deleted_at` bigint default NULL,
   PRIMARY KEY (`id`),
-  UNIQUE uniq_session_id (`user_id`, `session_id`, `deleted_at`)
+  UNIQUE uniq_session_id (`user_id`, `session_id`, `deleted_at`),
+  KEY `idx_user_sessions_user_deleted` (`user_id`, `deleted_at`),
+  KEY `idx_user_sessions_session_deleted` (`session_id`, `deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 /* 更新処理について利用するone time tokenの管理 */

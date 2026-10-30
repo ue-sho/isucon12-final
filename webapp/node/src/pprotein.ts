@@ -11,7 +11,9 @@ export function triggerPproteinCollect(): void {
   if (process.env.PPROTEIN_ENABLED !== "1") return;
   const url = `${process.env.PPROTEIN_URL}/api/group/collect`;
   // pprotein は収集が終わるまで応答しないことがあるため、短いタイムアウトで切る（収集自体は続く）
-  fetch(url, { signal: AbortSignal.timeout(2000) })
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
+  fetch(url, { signal: controller.signal })
     .then((res) => {
       if (!res.ok) console.error(`[pprotein] collect: HTTP ${res.status}`);
       return res.body?.cancel();
@@ -20,5 +22,6 @@ export function triggerPproteinCollect(): void {
       const name = (e as { name?: string })?.name;
       if (name === "TimeoutError" || name === "AbortError") return;
       console.error("[pprotein] collect failed:", (e as Error)?.message ?? e);
-    });
+    })
+    .finally(() => clearTimeout(timer));
 }

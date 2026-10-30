@@ -949,8 +949,18 @@ app.post(
       }
 
       const conn = await db.getConnection()
-      await conn.beginTransaction()
       try {
+        // Avoid cross-user gap locks; serialize only logins for the same user.
+        await conn.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
+        await conn.beginTransaction()
+        const [[lockedUser]] = await conn.query<(UserRow & RowDataPacket)[]>(
+          'SELECT * FROM users WHERE id=? FOR UPDATE', [userId]
+        )
+        if (!lockedUser) {
+          await conn.rollback()
+          return errorResponse(res, 404, new Error(ErrUserNotFound))
+        }
+        Object.assign(userRow, lockedUser)
         // sessionを更新
         let query = 'UPDATE user_sessions SET deleted_at=? WHERE user_id=? AND deleted_at IS NULL'
         await conn.query(query, [requestAt, userId])
