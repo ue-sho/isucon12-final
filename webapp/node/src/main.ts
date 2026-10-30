@@ -1240,24 +1240,13 @@ app.get(
       LIMIT ? OFFSET ?`
       const [presentList] = await db.query<(UserPresentRow & RowDataPacket)[]>(query, [
         userId,
-        PresentCountPerPage,
+        PresentCountPerPage + 1,
         offset,
       ])
 
-      const [[result]] = await db.query<({ 'COUNT(*)': number } & RowDataPacket)[]>(
-        'SELECT COUNT(*) FROM user_presents WHERE user_id = ? AND deleted_at IS NULL',
-        [userId]
-      )
-      const presentCount = result['COUNT(*)'] as number
-
-      let isNext = false
-      if (presentCount > offset + PresentCountPerPage) {
-        isNext = true
-      }
-
       const payload: ListPresentResponse = {
-        presents: presentList.map(toUserPresent),
-        isNext,
+        presents: presentList.slice(0, PresentCountPerPage).map(toUserPresent),
+        isNext: presentList.length > PresentCountPerPage,
       }
       return successResponse(res, payload)
     } catch (error) {
