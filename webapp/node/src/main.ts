@@ -4,6 +4,7 @@ import morgan from 'morgan'
 import mysql, { RowDataPacket } from 'mysql2/promise'
 import childProcess from 'child_process'
 import util from 'util'
+import { triggerPproteinCollect } from './pprotein'
 
 const exec = util.promisify(childProcess.exec)
 
@@ -726,6 +727,7 @@ app.post(
   wrap(async (req: Request, res: Response, _next: NextFunction) => {
     try {
       await exec(['/bin/sh', '-c', SQLDirectory + 'init.sh'].join(' '))
+      triggerPproteinCollect()
 
       const data: InitializeResponse = {
         language: 'node',
