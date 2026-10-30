@@ -69,6 +69,16 @@ test('present pagination boundaries, grouped grants and concurrent receipt prese
     assert.equal(Number(itemAfter.amount) - Number(itemBefore.amount), 8)
     assert.equal((await request(`/user/${userId}/present/index/1`)).presents.length, 0)
 
+    // A failure after a valid coin grant must roll back both balances and gift deletion.
+    const badIds = await fill(2)
+    await db.query('UPDATE user_presents SET item_type=99 WHERE id=?', [badIds[1]])
+    await request(`/user/${userId}/present/receive`, { viewerId, presentIds: badIds }, 500)
+    const [[remaining]] = await db.query(
+      'SELECT COUNT(*) n FROM user_presents WHERE user_id=? AND deleted_at IS NULL', [userId])
+    const [[afterRollback]] = await db.query('SELECT isu_coin FROM users WHERE id=?', [userId])
+    assert.equal(remaining.n, 2)
+    assert.equal(afterRollback.isu_coin, after.isu_coin)
+
     // Two requests racing to consume one token must not both pass token validation.
     const gacha = await request(`/user/${userId}/gacha/index`)
     assert.ok(gacha.gachas.length)
