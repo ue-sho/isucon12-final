@@ -1146,8 +1146,8 @@ app.post(
       }
 
       // gachaIdからガチャマスタの取得
-      query = 'SELECT * FROM gacha_masters WHERE id=? AND start_at <= ? AND end_at >= ?'
-      const [[gachaInfo]] = await db.query<(GachaMasterRow & RowDataPacket)[]>(query, [gachaId, requestAt, requestAt])
+      query = 'SELECT * FROM gacha_masters WHERE id=? AND start_at <= ?'
+      const [[gachaInfo]] = await db.query<(GachaMasterRow & RowDataPacket)[]>(query, [gachaId, requestAt])
       if (!gachaInfo) {
         return errorResponse(res, 404, new Error('not found gacha'))
       }
