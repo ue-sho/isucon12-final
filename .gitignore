@@ -5,3 +5,7 @@ node_modules/
 /backup/
 /.isutools/
 /isutools/.bootstrap/
+/env
+debian.cnf
+/webapp/sql/4_alldata_exclude_user_presents.sql
+/webapp/sql/setup/2_init.sql
