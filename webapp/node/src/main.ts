@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction, RequestHandler } from 'express'
 import cors from 'cors'
 import morgan from 'morgan'
-import mysql, { RowDataPacket } from 'mysql2/promise'
+import mysql, { RowDataPacket, OkPacket } from 'mysql2/promise'
 import childProcess from 'child_process'
 import util from 'util'
 import { triggerPproteinCollect } from './pprotein'
@@ -333,17 +333,12 @@ async function checkOneTimeToken(token: string, tokenType: number, requestAt: nu
     return false
   }
 
-  if (tk.expired_at < requestAt) {
-    query = 'UPDATE user_one_time_tokens SET deleted_at=? WHERE token=?'
-    await db.query(query, [requestAt, token])
-    return false
-  }
-
-  // 使ったトークンを失効する
-  query = 'UPDATE user_one_time_tokens SET deleted_at=? WHERE token=?'
-  await db.query(query, [requestAt, token])
-
-  return true
+  // Use the primary key to avoid a table scan, and consume each token at most once.
+  const [updated] = await db.query<OkPacket>(
+    'UPDATE user_one_time_tokens SET deleted_at=? WHERE id=? AND deleted_at IS NULL',
+    [requestAt, tk.id]
+  )
+  return updated.affectedRows === 1 && tk.expired_at >= requestAt
 }
 
 // checkViewerID

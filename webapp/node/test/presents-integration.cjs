@@ -68,6 +68,19 @@ test('present pagination boundaries, grouped grants and concurrent receipt prese
     assert.equal(cardsAfter.n - cardsBefore.n, 2)
     assert.equal(Number(itemAfter.amount) - Number(itemBefore.amount), 8)
     assert.equal((await request(`/user/${userId}/present/index/1`)).presents.length, 0)
+
+    // Two requests racing to consume one token must not both pass token validation.
+    const gacha = await request(`/user/${userId}/gacha/index`)
+    assert.ok(gacha.gachas.length)
+    await db.query('UPDATE users SET isu_coin=0 WHERE id=?', [userId])
+    const statuses = await Promise.all([1, 2].map(async () => {
+      const res = await fetch(`${base}/user/${userId}/gacha/draw/${gacha.gachas[0].gacha.id}/1`, {
+        method: 'POST', headers, body: JSON.stringify({ viewerId, oneTimeToken: gacha.oneTimeToken }),
+      })
+      await res.arrayBuffer()
+      return res.status
+    }))
+    assert.deepEqual(statuses.sort(), [400, 409])
   } finally {
     if (userId) await db.query('DELETE FROM user_presents WHERE user_id=?', [userId])
     await db.end()
